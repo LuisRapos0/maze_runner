@@ -7,15 +7,17 @@
 #include <thread>
 #include <chrono>
 #include <stdlib.h>
+#include <algorithm>
 
 unsigned int num_rows, num_cols;
+bool stop_printing = false;
 std::vector<std::vector<char>> Maze;
 struct Position
 {
   int row;
   int col;
 };
-std::stack<Position> valid_positions;
+bool exit_found = false;
 
 bool is_valid_position(int row, int col) {
   if(row >= 0 && row < num_rows && num_cols >= 0 && col < num_cols)
@@ -68,6 +70,13 @@ void print_maze()
     std::cout << "\n";
   }
 }
+void maze_printer(){
+  while(!stop_printing){
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    system("clear");
+    print_maze();
+  }
+}
 
 Position load_maze(const std::string file_name)
 {
@@ -116,54 +125,54 @@ Position load_maze(const std::string file_name)
   return start_pos;
 }
 
-
-bool walk(Position pos)
+void do_join(std::thread& t)
 {
-  if(!valid_positions.empty())
-    valid_positions.pop();
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    t.join();
+}
+void join_all(std::vector<std::thread>& v)
+{
+  std::for_each(v.begin(),v.end(),do_join);
+}
 
-
+void walk(Position pos)
+{
   if(Maze.at(pos.row).at(pos.col)=='s')
   {
     Maze.at(pos.row).at(pos.col)='o';
     system("clear");
     print_maze();
-    return 1;
+    exit_found = true;
+    return;
   }
-
   Maze.at(pos.row).at(pos.col)='o';
-  system("clear");
-  print_maze();
+  
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  
+  Position up_pos    = {pos.row+1,pos.col};
+  Position right_pos = {pos.row,pos.col+1};
+  Position down_pos  = {pos.row-1,pos.col};
+  Position left_pos  = {pos.row,pos.col-1};
 
-  if(is_valid_position(pos.row+1,pos.col))
-  {
-    Position x = {pos.row+1,pos.col};
-    valid_positions.push(x);
-  }
-  if(is_valid_position(pos.row,pos.col+1))
-  {
-    Position x = {pos.row,pos.col+1};
-    valid_positions.push(x);
-  }
-  if(is_valid_position(pos.row-1,pos.col))
-  {
-    Position x = {pos.row-1,pos.col};
-    valid_positions.push(x);
-  }
-  if(is_valid_position(pos.row,pos.col-1))
-  {
-    Position x = {pos.row,pos.col-1};
-    valid_positions.push(x);
-  }
-  
-  if (valid_positions.empty())
-    return 0;
-  
+  bool up_valid    = is_valid_position(pos.row+1,pos.col);
+  bool right_valid = is_valid_position(pos.row,pos.col+1);
+  bool down_valid  = is_valid_position(pos.row-1,pos.col);
+  bool left_valid  = is_valid_position(pos.row,pos.col-1);
+
+  std::vector<std::thread> threads;
+  if(up_valid)
+    threads.push_back(std::thread(walk,up_pos));
+  if(right_valid)
+    threads.push_back(std::thread(walk,right_pos));
+  if(down_valid)
+    threads.push_back(std::thread(walk,down_pos));
+  if(left_valid)
+    threads.push_back(std::thread(walk,left_pos));
+
   Maze.at(pos.row).at(pos.col)='.';
-  bool exit_found = walk(valid_positions.top());
-  return exit_found;
-}
+  join_all(threads);
+
+  return;
+} 
 
 int main(int argc, char **argv)
 {
@@ -188,7 +197,15 @@ int main(int argc, char **argv)
   std::cout << "Pressione enter para iniciar";
   getchar();
   
-  bool exit_found = walk(start_pos);
+  std::thread maze_print_thread(maze_printer);
+  std::thread maze_runner_thread(walk,start_pos);
+
+  maze_runner_thread.join();
+  stop_printing = true;
+  maze_print_thread.join();
+  system("clear");
+  print_maze();
+
   if (exit_found) {
       std::cout << "Saída encontrada!" << std::endl;
   } else {
